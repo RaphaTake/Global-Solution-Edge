@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard - Ambiente de Estudo</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        background: #f3f4f6;
+        font-family: Arial, sans-serif;
+    }
+
+    h1 {
+        text-align: center;
+        padding: 20px;
+        color: #333;
+    }
+
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        gap: 20px;
+        padding: 20px;
+    }
+
+    .card {
+        background: white;
+        padding: 20px;
+        border-radius: 14px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        transition: 0.3s;
+    }
+
+    .card:hover {
+        transform: scale(1.02);
+    }
+
+    .status-box {
+        padding: 14px;
+        text-align: center;
+        border-radius: 10px;
+        font-size: 22px;
+        font-weight: bold;
+        color: white;
+        margin-top: 10px;
+    }
+
+    .ultimoValor {
+        text-align: center;
+        font-size: 18px;
+        margin-bottom: 10px;
+        color: #333;
+    }
+</style>
+</head>
+
+<body>
+
+<h1>📊 Dashboard – Monitoramento de Ambiente de Estudo</h1>
+
+<div class="grid">
+
+    <div class="card">
+        <div class="ultimoValor" id="tempUltimo">Última: -- °C</div>
+        <canvas id="tempChart"></canvas>
+    </div>
+    <div class="card">
+        <div class="ultimoValor" id="humUltimo">Última: -- %</div>
+        <canvas id="humChart"></canvas>
+    </div>
+    <div class="card">
+        <div class="ultimoValor" id="ldrUltimo">Última: --</div>
+        <canvas id="ldrChart"></canvas>
+    </div>
+    <div class="card">
+        <div class="ultimoValor" id="timerUltimo">Última: -- s</div>
+        <canvas id="timerChart"></canvas>
+    </div>
+
+    <div class="card">
+        <h2>Ambiente Ideal?</h2>
+        <div id="statusBox" class="status-box">Carregando...</div>
+    </div>
+
+    <div class="card">
+        <h2>Tema do Estudo</h2>
+        <div id="temaBox" class="status-box" style="background:#3498db;">Carregando...</div>
+    </div>
+
+</div>
+
+<script>
+
+const channelID = 3174046;
+const readAPI = "158O1MDXCF4AAI63";
+const url = `https://api.thingspeak.com/channels/${channelID}/feeds.json?api_key=${readAPI}&results=60`;
+
+
+function criaGrafico(ctx, label, borderColor, tipo="line") {
+    return new Chart(ctx, {
+        type: tipo,
+        data: {
+            labels: [],
+            datasets: [{
+                label: label,
+                data: [],
+                borderWidth: 3,
+                borderColor: borderColor,
+                backgroundColor: borderColor + "55",
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { beginAtZero: false }
+            }
+        }
+    });
+}
+
+let tempChart = criaGrafico(document.getElementById("tempChart"), "Temperatura (°C)", "#ff3b30", "line");
+let humChart = criaGrafico(document.getElementById("humChart"), "Umidade (%)", "#0a84ff", "line");
+let ldrChart = criaGrafico(document.getElementById("ldrChart"), "Luminosidade (LDR)", "#8e44ad", "bar");
+let timerChart = criaGrafico(document.getElementById("timerChart"), "Tempo Estudo (s)", "#f39c12", "bar");
+
+
+async function atualizarDados() {
+    const req = await fetch(url);
+    const data = await req.json();
+
+    let labels = data.feeds.map(f => f.created_at);
+
+    tempChart.data.labels = labels;
+    humChart.data.labels = labels;
+    ldrChart.data.labels = labels;
+    timerChart.data.labels = labels;
+
+    tempChart.data.datasets[0].data = data.feeds.map(f => f.field1);
+    humChart.data.datasets[0].data = data.feeds.map(f => f.field2);
+    ldrChart.data.datasets[0].data = data.feeds.map(f => f.field3);
+    timerChart.data.datasets[0].data = data.feeds.map(f => f.field5);
+
+    const ultimo = data.feeds[data.feeds.length - 1];
+
+    document.getElementById("tempUltimo").innerText = `Última: ${ultimo.field1 || "--"} °C`;
+    document.getElementById("humUltimo").innerText = `Última: ${ultimo.field2 || "--"} %`;
+    document.getElementById("ldrUltimo").innerText = `Última: ${ultimo.field3 || "--"}`;
+    document.getElementById("timerUltimo").innerText = `Última: ${ultimo.field5 || "--"} s`;
+
+    const ambienteRaw = ultimo.field6;
+    const ambiente = Number(ambienteRaw);
+    let box = document.getElementById("statusBox");
+
+    if (ambienteRaw === null || ambienteRaw === "" || (ambiente !== 0 && ambiente !== 1)) {
+        box.style.background = "#7f8c8d";
+        box.innerText = "Aguardando finalizar o estudo...";
+    } 
+    else if (ambiente === 1) {
+        box.style.background = "#2ecc71";
+        box.innerText = "✔ Ambiente Ideal!";
+    } 
+    else {
+        box.style.background = "#e74c3c";
+        box.innerText = "✘ Ambiente Ruim";
+    }
+
+    const tema = ultimo.field7 || "Nenhum tema encontrado";
+    document.getElementById("temaBox").innerText = tema;
+
+    tempChart.update();
+    humChart.update();
+    ldrChart.update();
+    timerChart.update();
+}
+
+atualizarDados();
+setInterval(atualizarDados, 10000);
+
+</script>
+
+</body>
+</html>
